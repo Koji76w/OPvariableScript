@@ -8,7 +8,7 @@ screenGui.Name = "PropertyEditorGUI"
 screenGui.ResetOnSpawn = false
 
 local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0, 600, 0, 80)
+frame.Size = UDim2.new(0, 600, 0, 170)
 frame.Position = UDim2.new(0, 20, 0, 20)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 10
@@ -44,9 +44,7 @@ dropdown.Text = "Select Property"
 dropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 dropdown.TextColor3 = Color3.new(1, 1, 1)
 dropdown.TextXAlignment = Enum.TextXAlignment.Left
-dropdown.TextTruncate = Enum.TextTruncate.AtEnd
 dropdown.ClipsDescendants = true
-dropdown.TextWrapped = false
 dropdown.ZIndex = 1
 
 -- Input Box
@@ -75,6 +73,22 @@ valuePreview.TextXAlignment = Enum.TextXAlignment.Left
 valuePreview.Font = Enum.Font.SourceSans
 valuePreview.TextSize = 16
 valuePreview.Text = ""
+
+-- Search Box
+local searchBox = Instance.new("TextBox", frame)
+searchBox.Size = UDim2.new(0, 150, 0, 30)
+searchBox.Position = UDim2.new(0, 10, 0, 100)
+searchBox.PlaceholderText = "Search value (e.g. 16)"
+searchBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+searchBox.TextColor3 = Color3.new(1, 1, 1)
+
+-- Search Button
+local searchButton = Instance.new("TextButton", frame)
+searchButton.Size = UDim2.new(0, 150, 0, 30)
+searchButton.Position = UDim2.new(0, 170, 0, 100)
+searchButton.Text = "Search"
+searchButton.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
+searchButton.TextColor3 = Color3.new(1, 1, 1)
 
 -- Editable Properties
 local editableProps = {}
@@ -107,30 +121,17 @@ local function deepScan(container)
 	end
 end
 
--- Scan All Major Services
+-- Scan Services
 local containers = {
-	game.Workspace,
-	game.ReplicatedStorage,
-	game.StarterGui,
-	game.StarterPack,
-	game.StarterPlayer,
-	game.Lighting,
-	game.Players,
-	game:GetService("ReplicatedFirst"),
-	game:GetService("SoundService")
+	game.Workspace, game.ReplicatedStorage, game.StarterGui,
+	game.StarterPack, game.StarterPlayer, game.Lighting,
+	game.Players, game:GetService("ReplicatedFirst"), game:GetService("SoundService")
 }
-
 for _, container in ipairs(containers) do
-	pcall(function()
-		deepScan(container)
-	end)
+	pcall(function() deepScan(container) end)
 end
-
--- Also scan players
 for _, plr in ipairs(Players:GetPlayers()) do
-	pcall(function()
-		deepScan(plr)
-	end)
+	pcall(function() deepScan(plr) end)
 end
 
 -- Dropdown Logic
@@ -145,25 +146,20 @@ local function closeDropdown()
 	dropdownOpen = false
 end
 
-dropdown.MouseButton1Click:Connect(function()
-	if dropdownOpen then
-		closeDropdown()
-		return
-	end
-
+local function openDropdown(filteredList)
 	closeDropdown()
 	dropdownOpen = true
 
 	local menu = Instance.new("ScrollingFrame", frame)
 	menu.Name = "DropdownMenu"
 	menu.Size = UDim2.new(0, 580, 0, 120)
-	menu.Position = UDim2.new(0, 10, 0, 100)
+	menu.Position = UDim2.new(0, 10, 0, 135)
 	menu.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-	menu.CanvasSize = UDim2.new(0, 0, 0, #editableProps * 25)
+	menu.CanvasSize = UDim2.new(0, 0, 0, #filteredList * 25)
 	menu.ScrollBarThickness = 6
 	menu.ZIndex = 2
 
-	for i, entry in ipairs(editableProps) do
+	for i, entry in ipairs(filteredList) do
 		local option = Instance.new("TextButton", menu)
 		option.Size = UDim2.new(1, 0, 0, 25)
 		option.Position = UDim2.new(0, 0, 0, (i - 1) * 25)
@@ -180,9 +176,28 @@ dropdown.MouseButton1Click:Connect(function()
 			valuePreview.Text = "Current Value: " .. tostring(entry.object[entry.property])
 		end)
 	end
+end
+
+dropdown.MouseButton1Click:Connect(function()
+	openDropdown(editableProps)
 end)
 
--- Apply Logic
+searchButton.MouseButton1Click:Connect(function()
+	local searchValue = tonumber(searchBox.Text)
+	if searchValue then
+		local results = {}
+		for _, entry in ipairs(editableProps) do
+			if tonumber(entry.object[entry.property]) == searchValue then
+				table.insert(results, entry)
+			end
+		end
+		openDropdown(results)
+	else
+		valuePreview.Text = "❌ Invalid search input"
+	end
+end)
+
+-- Apply Changes
 applyButton.MouseButton1Click:Connect(function()
 	if selected and inputBox.Text ~= "" then
 		local newValue = tonumber(inputBox.Text)
@@ -196,7 +211,7 @@ applyButton.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Toggle Collapse
+-- Collapse / Expand
 local minimized = false
 local anchorPosition = frame.Position
 local originalSize = frame.Size
@@ -206,18 +221,18 @@ local function updateFrame()
 	if minimized then
 		frame.Size = minimizedSize
 		frame.Position = UDim2.new(anchorPosition.X.Scale, anchorPosition.X.Offset + (originalSize.X.Offset - minimizedSize.X.Offset), anchorPosition.Y.Scale, anchorPosition.Y.Offset)
-		dropdown.Visible = false
-		inputBox.Visible = false
-		applyButton.Visible = false
-		valuePreview.Visible = false
+		for _, v in pairs(frame:GetChildren()) do
+			if v ~= title and v ~= toggleButton then
+				v.Visible = false
+			end
+		end
 		toggleButton.Text = "+"
 	else
 		frame.Size = originalSize
 		frame.Position = anchorPosition
-		dropdown.Visible = true
-		inputBox.Visible = true
-		applyButton.Visible = true
-		valuePreview.Visible = true
+		for _, v in pairs(frame:GetChildren()) do
+			v.Visible = true
+		end
 		toggleButton.Text = "−"
 	end
 end
@@ -227,13 +242,11 @@ toggleButton.MouseButton1Click:Connect(function()
 	updateFrame()
 end)
 
--- Accurate dragging system for both minimized and full modes
+-- Dragging System
 local dragging = false
-
 frame.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = true
-
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
 				dragging = false
@@ -245,30 +258,9 @@ end)
 UserInputService.InputChanged:Connect(function(input)
 	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 		local mousePos = UserInputService:GetMouseLocation()
-
-		local newPos = minimized
-			and UDim2.new(0, mousePos.X, 0, mousePos.Y) -- Follow mouse directly
-			or UDim2.new(0, mousePos.X - frame.Size.X.Offset / 2, 0, mousePos.Y - 10) -- Centered drag when full
-
-		anchorPosition = newPos
-		frame.Position = anchorPosition
-	end
-end)
-
-
-frame.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		dragInput = input
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if input == dragInput and dragging then
-		local delta = input.Position - dragStart
-		local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 		anchorPosition = minimized
-			and UDim2.new(newPos.X.Scale, newPos.X.Offset - (originalSize.X.Offset - minimizedSize.X.Offset), newPos.Y.Scale, newPos.Y.Offset)
-			or newPos
+			and UDim2.new(0, mousePos.X, 0, mousePos.Y)
+			or UDim2.new(0, mousePos.X - frame.Size.X.Offset / 2, 0, mousePos.Y - 10)
 		frame.Position = anchorPosition
 	end
 end)
